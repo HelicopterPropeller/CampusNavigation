@@ -11,11 +11,21 @@ public class Node {
 
     public final LatLng position;
 
-    public final String name;
+    public String name;
+    public String description;
 
-    public Node(LatLng position, String name) {
+    public Node(LatLng position, String name, String description) {
         this.id = ID_GENERATOR.incrementAndGet();;
         this.position = position;
         this.name = name;
+        this.description = description;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 }

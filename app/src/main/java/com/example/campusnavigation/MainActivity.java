@@ -1,7 +1,9 @@
 package com.example.campusnavigation;
 
 import android.os.Bundle;
+import android.util.Pair;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -18,9 +20,11 @@ import com.tencent.tencentmap.mapsdk.maps.model.LatLng;
 import com.tencent.tencentmap.mapsdk.maps.model.LatLngBounds;
 import com.tencent.tencentmap.mapsdk.maps.model.Marker;
 import com.tencent.tencentmap.mapsdk.maps.model.MarkerOptions;
+import com.tencent.tencentmap.mapsdk.maps.model.Polyline;
+import com.tencent.tencentmap.mapsdk.maps.model.PolylineOptions;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,29 +37,42 @@ public class MainActivity extends AppCompatActivity {
     private int padding;
     private LatLngBounds bounds;
     private LatLng boundsCenter;
-    private Map<Marker, Node> markerToNode = new HashMap<>();
-    private Map<Marker, Edge> markerToEdge = new HashMap<>();
+    private Map<Marker, Node> markerToNode = new LinkedHashMap<>();
+    private Map<Marker, List<Polyline>> markerToPolyline = new LinkedHashMap<>();
     private boolean isShow = false;
     private MaterialButtonToggleGroup toggleGroup;
     private View bottomSheet;
+    private TextView button_1;
+    private TextView button_2;
+    private final CampusGraph graph = new CampusGraph();
+    private List<LatLng> routePoints = new ArrayList<>();
+    private Marker edgeStart = null;
+    private Marker viewStart = null;
 
     private TencentMap.OnMapClickListener nodeMapCL = latLng -> {
         /* 点击设立地点 弹出弹窗以编辑地点信息 */
         EditDialogFragment dialog = new EditDialogFragment();
 
-        dialog.setOnConfirmListener(name -> {
-            Node node = new Node(latLng, name);
+        dialog.setOnConfirmListener((name, description) -> {
+            if (name.isEmpty() || description.isEmpty()) {
+                Toast.makeText(this, "地点名称和描述不应为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Node node = new Node(latLng, name, description);
 
             MarkerOptions options = new MarkerOptions(latLng);
             options.infoWindowEnable(false);
-            options.title("天安门")
-                    .snippet("地址: 北京市东城区东长安街");
+            options.title(name)
+                    .snippet(description);
             Marker marker = tencentMap.addMarker(options);
 
             marker.setInfoWindowEnable(true);
             marker.setClickable(true);
 
             markerToNode.put(marker, node);
+            markerToPolyline.put(marker, new ArrayList<>());
+            graph.addNode(node);
         });
 
         dialog.show(getSupportFragmentManager(), "EditDialog");
@@ -63,13 +80,63 @@ public class MainActivity extends AppCompatActivity {
 
     private TencentMap.OnMarkerClickListener nodeMarkerCL = marker -> {
         /* 点击显示地点信息 提供更改和删除功能 */
-        if(markerToNode.containsKey(marker)) {
-            Node node = markerToNode.get(marker);
+        Node node = markerToNode.get(marker);
+        if (isShow) marker.hideInfoWindow(); else marker.showInfoWindow();
 
-            if (isShow) marker.hideInfoWindow(); else marker.showInfoWindow();
+        button_1.setText("更改");
+        button_2.setText("删除");
+
+        button_1.setOnClickListener(v -> {
+            /* 更改 */
+            EditDialogFragment dialog = new EditDialogFragment();
+
+            dialog.setOnConfirmListener((name, description) -> {
+                if (name.isEmpty() || description.isEmpty()) {
+                    Toast.makeText(this, "地点名称和描述不应为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                node.setName(name);
+                node.setDescription(description);
+
+                marker.getOptions().title(name);
+                marker.getOptions().snippet(description);
+
+                marker.showInfoWindow();
+            });
+
+            dialog.show(getSupportFragmentManager(), "EditDialog");
+        });
+
+        button_2.setOnClickListener(v -> {
+            /* 删除 */
+            Node temp = markerToNode.get(marker);
+            markerToNode.remove(marker);
+
+            List<Polyline> polylines = markerToPolyline.get(marker);
+            for (Polyline polyline : polylines) polyline.remove();
+            markerToPolyline.remove(marker);
+
+            graph.removeNode(temp.id);
+            marker.remove();
 
             isShow = !isShow;
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+
+            Toast.makeText(this, "地点标记已删除", Toast.LENGTH_SHORT).show();
+        });
+
+        if (isShow) {
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+        } else {
+            button_1.setVisibility(View.VISIBLE);
+            button_2.setVisibility(View.VISIBLE);
         }
+
+        isShow = !isShow;
+
         return true;
     };
 
@@ -78,16 +145,75 @@ public class MainActivity extends AppCompatActivity {
     };
 
     private TencentMap.OnMarkerClickListener viewMarkerCL = marker -> {
-        /* 点击显示地点信息和from-to按钮 */
+        /* 点击显示地点信息 提供from-to功能 */
+        Node node = markerToNode.get(marker);
+        if (isShow) marker.hideInfoWindow(); else marker.showInfoWindow();
+
+        button_1.setText("从这来");
+        button_2.setText("到这去");
+
+        button_1.setOnClickListener(v -> {
+            /* from */
+            viewStart = marker;
+        });
+
+        button_2.setOnClickListener(v -> {
+            /* to */
+            if (viewStart == null) {
+                Toast.makeText(this, "请选择起点", Toast.LENGTH_SHORT).show();
+                return;
+            } else if (viewStart == marker) {
+                Toast.makeText(this, "终点和起点不应该是同一地点", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Node from = markerToNode.get(viewStart);
+            Node to = markerToNode.get(marker);
+            double distance = graph.getShortestPath(from.id, to.id);
+            Toast.makeText(this, "最近距离是: " + distance + "米", Toast.LENGTH_SHORT).show();
+
+            viewStart = null;
+        });
+
+        if (isShow) {
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+        } else {
+            button_1.setVisibility(View.VISIBLE);
+            button_2.setVisibility(View.VISIBLE);
+        }
+
+        isShow = !isShow;
+
         return true;
     };
 
     private TencentMap.OnMapClickListener edgeMapCL = latLng -> {
         /* 点击区域选取途经点 */
+        routePoints.add(latLng);
     };
 
     private TencentMap.OnMarkerClickListener edgeMarkerCL = marker -> {
         /* 首次点击Marker作为起点 再次点击其他Marker生成道路 */
+        if (edgeStart == null) {
+            edgeStart = marker;
+        } else {
+            Pair<Double, Polyline> pair = drawRoute(edgeStart.getPosition(), marker.getPosition());
+
+            double distance = pair.first;
+            Polyline polyline = pair.second;
+
+            markerToPolyline.get(edgeStart).add(polyline);
+
+            Node from = markerToNode.get(edgeStart);
+            Node to = markerToNode.get(marker);
+            Edge edge = new Edge(from.id, to.id, distance);
+            graph.addEdge(edge);
+
+            routePoints.clear();
+            edgeStart = null;
+        }
+
         return true;
     };
 
@@ -181,21 +307,21 @@ public class MainActivity extends AppCompatActivity {
                     if (checkedId == R.id.view_mode) {
                         /* 仅观察模式 */
 
-                        reformat();
+                        reset();
                         Toast.makeText(this, "当前处于地图浏览模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(viewMapCL);
                         tencentMap.setOnMarkerClickListener(viewMarkerCL);
                     } else if (checkedId == R.id.node_mode) {
                         /* 编辑地点模式 */
 
-                        reformat();
+                        reset();
                         Toast.makeText(this, "当前处于编辑节点模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(nodeMapCL);
                         tencentMap.setOnMarkerClickListener(nodeMarkerCL);
                     } else if (checkedId == R.id.edge_mode) {
                         /* 编辑道路模式 */
 
-                        reformat();
+                        reset();
                         Toast.makeText(this, "当前处于编辑道路模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(edgeMapCL);
                         tencentMap.setOnMarkerClickListener(edgeMarkerCL);
@@ -203,7 +329,13 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
 
-        Toast.makeText(this, "当前处于地图浏览模式", Toast.LENGTH_SHORT).show();
+        button_1 = findViewById(R.id.button_1);
+        button_2 = findViewById(R.id.button_2);
+
+        button_1.setVisibility(View.GONE);
+        button_2.setVisibility(View.GONE);
+
+        toggleGroup.check(R.id.view_mode);
     }
 
     private void reformat() {
@@ -223,6 +355,61 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
         );
+    }
+
+    private void reset() {
+        if (isShow) {
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+
+            isShow = !isShow;
+        }
+
+        for (Marker marker : markerToNode.keySet()) {
+            marker.hideInfoWindow();
+        }
+    }
+
+    private Pair<Double, Polyline> drawRoute(LatLng start, LatLng end) {
+        double totalDistance = 0;
+
+        routePoints.addFirst(start);
+        routePoints.addLast(end);
+
+        for (int i = 0; i < routePoints.size() - 1; i++) {
+            totalDistance += calculateDistance(routePoints.get(i), routePoints.get(i + 1));
+        }
+
+        PolylineOptions polylineOptions = new PolylineOptions().addAll(routePoints)
+                .width(4);
+        Polyline polyline = tencentMap.addPolyline(polylineOptions);
+
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+        for (LatLng point : routePoints) {
+            builder.include(point);
+        }
+        LatLngBounds bounds = builder.build();
+        tencentMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100));
+
+        return new Pair<>(totalDistance, polyline);
+    }
+
+    public double calculateDistance(LatLng startPoint, LatLng endPoint) {
+        double R = 6371000;
+        double lat1 = Math.toRadians(startPoint.latitude);
+        double lon1 = Math.toRadians(startPoint.longitude);
+        double lat2 = Math.toRadians(endPoint.latitude);
+        double lon2 = Math.toRadians(endPoint.longitude);
+
+        double dlat = lat2 - lat1;
+        double dlon = lon2 - lon1;
+
+        double a = Math.sin(dlat / 2) * Math.sin(dlat / 2) +
+                Math.cos(lat1) * Math.cos(lat2) *
+                        Math.sin(dlon / 2) * Math.sin(dlon / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
     }
 
     @Override

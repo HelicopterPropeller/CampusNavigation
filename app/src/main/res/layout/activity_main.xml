@@ -6,11 +6,46 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.tencent.tencentmap.mapsdk.maps.MapView
-        android:id="@+id/content"
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#DDDDDD"/>
+        android:layout_height="match_parent">
+
+        <com.tencent.tencentmap.mapsdk.maps.MapView
+            android:id="@+id/content"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#DDDDDD"/>
+
+        <TextView
+            android:id="@+id/button_2"
+            android:layout_width="60dp"
+            android:layout_height="40dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_marginBottom="96dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/background_rounded"
+            android:backgroundTint="#FEFEFE"
+            android:text="到这去"
+            android:textSize="12sp"
+            android:gravity="center"
+            />
+
+        <TextView
+            android:id="@+id/button_1"
+            android:layout_width="60dp"
+            android:layout_height="40dp"
+            app:layout_constraintBottom_toTopOf="@id/button_2"
+            app:layout_constraintEnd_toEndOf="parent"
+            android:layout_margin="16dp"
+            android:background="@drawable/background_rounded"
+            android:backgroundTint="#FEFEFE"
+            android:text="从这来"
+            android:textSize="12sp"
+            android:gravity="center"
+            />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <LinearLayout
         android:id="@+id/bottom_sheet"
@@ -18,7 +53,8 @@
         android:layout_height="80dp"
         android:orientation="vertical"
         android:background="@drawable/background_rounded"
-        android:backgroundTint="#FFFFFF"
+        android:backgroundTint="#FEFEFE"
+        app:layout_constraintBottom_toBottomOf="@id/content"
         app:behavior_peekHeight="80dp"
         app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
 
