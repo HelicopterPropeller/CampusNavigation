@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    android:id="@+id/main"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.tencent.tencentmap.mapsdk.maps.MapView
+        android:id="@+id/content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#DDDDDD"/>
+
+    <LinearLayout
+        android:id="@+id/bottom_sheet"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:orientation="vertical"
+        android:background="@drawable/background_rounded"
+        android:backgroundTint="#FFFFFF"
+        app:behavior_peekHeight="80dp"
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
+
+        <View
+            android:layout_width="40dp"
+            android:layout_height="3dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_margin="12dp"
+            android:background="#999999"/>
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/mode_toggle_group"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="12dp"
+            android:layout_gravity="center_horizontal"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/view_mode"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="浏览地图"
+                android:textSize="12sp"
+                app:backgroundTint="@color/mode_button_color"
+                app:rippleColor="@color/mode_button_color"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/node_mode"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="编辑地点"
+                android:textSize="12sp"
+                app:backgroundTint="@color/mode_button_color"
+                app:rippleColor="@color/mode_button_color"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/edge_mode"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="编辑道路"
+                android:textSize="12sp"
+                app:backgroundTint="@color/mode_button_color"
+                app:rippleColor="@color/mode_button_color"/>
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    </LinearLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
