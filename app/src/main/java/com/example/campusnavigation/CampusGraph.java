@@ -28,11 +28,18 @@ public class CampusGraph {
         if (adj.containsKey(edge.fromId)) {
             adj.get(edge.fromId).add(edge);
         }
+        if (adj.containsKey(edge.toId)) {
+            Edge reverseEdge = new Edge(edge.toId, edge.fromId, edge.distance);
+            adj.get(edge.toId).add(reverseEdge);
+        }
     }
 
     public void removeEdge(int fromId, int toId) {
         if (adj.containsKey(fromId)) {
             adj.get(fromId).removeIf(edge -> edge.toId == toId);
+        }
+        if (adj.containsKey(toId)) {
+            adj.get(toId).removeIf(edge -> edge.toId == fromId);
         }
     }
 

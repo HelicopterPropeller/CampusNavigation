@@ -15,6 +15,8 @@ import com.tencent.tencentmap.mapsdk.maps.CameraUpdateFactory;
 import com.tencent.tencentmap.mapsdk.maps.MapView;
 import com.tencent.tencentmap.mapsdk.maps.TencentMap;
 import com.tencent.tencentmap.mapsdk.maps.TencentMapInitializer;
+import com.tencent.tencentmap.mapsdk.maps.model.BitmapDescriptor;
+import com.tencent.tencentmap.mapsdk.maps.model.BitmapDescriptorFactory;
 import com.tencent.tencentmap.mapsdk.maps.model.CameraPosition;
 import com.tencent.tencentmap.mapsdk.maps.model.LatLng;
 import com.tencent.tencentmap.mapsdk.maps.model.LatLngBounds;
@@ -45,7 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView button_1;
     private TextView button_2;
     private final CampusGraph graph = new CampusGraph();
-    private List<LatLng> routePoints = new ArrayList<>();
+    private List<Marker> routePoints = new ArrayList<>();
     private Marker edgeStart = null;
     private Marker viewStart = null;
 
@@ -114,10 +116,12 @@ public class MainActivity extends AppCompatActivity {
             markerToNode.remove(marker);
 
             List<Polyline> polylines = markerToPolyline.get(marker);
-            for (Polyline polyline : polylines) polyline.remove();
+            for (Polyline polyline : polylines)
+                polyline.remove();
             markerToPolyline.remove(marker);
 
             graph.removeNode(temp.id);
+
             marker.remove();
 
             isShow = !isShow;
@@ -155,6 +159,11 @@ public class MainActivity extends AppCompatActivity {
         button_1.setOnClickListener(v -> {
             /* from */
             viewStart = marker;
+
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+            marker.hideInfoWindow();
+            isShow = !isShow;
         });
 
         button_2.setOnClickListener(v -> {
@@ -170,8 +179,12 @@ public class MainActivity extends AppCompatActivity {
             Node from = markerToNode.get(viewStart);
             Node to = markerToNode.get(marker);
             double distance = graph.getShortestPath(from.id, to.id);
-            Toast.makeText(this, "最近距离是: " + distance + "米", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "最近距离是: " + (int) distance + "米", Toast.LENGTH_SHORT).show();
 
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+            marker.hideInfoWindow();
+            isShow = !isShow;
             viewStart = null;
         });
 
@@ -190,25 +203,35 @@ public class MainActivity extends AppCompatActivity {
 
     private TencentMap.OnMapClickListener edgeMapCL = latLng -> {
         /* 点击区域选取途经点 */
-        routePoints.add(latLng);
+        MarkerOptions mp = new MarkerOptions(latLng);
+        BitmapDescriptor custom = BitmapDescriptorFactory.fromResource(R.drawable.waypoint);
+        mp.icon(custom);
+        Marker marker = tencentMap.addMarker(mp);
+        routePoints.add(marker);
     };
 
     private TencentMap.OnMarkerClickListener edgeMarkerCL = marker -> {
         /* 首次点击Marker作为起点 再次点击其他Marker生成道路 */
         if (edgeStart == null) {
             edgeStart = marker;
+            for (Marker m : routePoints) m.remove();
+            routePoints.clear();
         } else {
-            Pair<Double, Polyline> pair = drawRoute(edgeStart.getPosition(), marker.getPosition());
-
+            Pair<Double, Polyline> pair = drawRoute(edgeStart, marker);
             double distance = pair.first;
             Polyline polyline = pair.second;
 
             markerToPolyline.get(edgeStart).add(polyline);
+            markerToPolyline.get(marker).add(polyline);
 
             Node from = markerToNode.get(edgeStart);
             Node to = markerToNode.get(marker);
-            Edge edge = new Edge(from.id, to.id, distance);
-            graph.addEdge(edge);
+
+            Edge edge1 = new Edge(from.id, to.id, distance);
+            Edge edge2 = new Edge(to.id, from.id, distance);
+
+            graph.addEdge(edge1);
+            graph.addEdge(edge2);
 
             routePoints.clear();
             edgeStart = null;
@@ -308,21 +331,21 @@ public class MainActivity extends AppCompatActivity {
                         /* 仅观察模式 */
 
                         reset();
-                        Toast.makeText(this, "当前处于地图浏览模式", Toast.LENGTH_SHORT).show();
+//                        Toast.makeText(this, "当前处于地图浏览模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(viewMapCL);
                         tencentMap.setOnMarkerClickListener(viewMarkerCL);
                     } else if (checkedId == R.id.node_mode) {
                         /* 编辑地点模式 */
 
                         reset();
-                        Toast.makeText(this, "当前处于编辑节点模式", Toast.LENGTH_SHORT).show();
+//                        Toast.makeText(this, "当前处于编辑节点模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(nodeMapCL);
                         tencentMap.setOnMarkerClickListener(nodeMarkerCL);
                     } else if (checkedId == R.id.edge_mode) {
                         /* 编辑道路模式 */
 
                         reset();
-                        Toast.makeText(this, "当前处于编辑道路模式", Toast.LENGTH_SHORT).show();
+//                        Toast.makeText(this, "当前处于编辑道路模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(edgeMapCL);
                         tencentMap.setOnMarkerClickListener(edgeMarkerCL);
                     }
@@ -365,31 +388,42 @@ public class MainActivity extends AppCompatActivity {
             isShow = !isShow;
         }
 
-        for (Marker marker : markerToNode.keySet()) {
+        for (Marker marker : markerToNode.keySet())
             marker.hideInfoWindow();
-        }
+
+        for (Marker marker : routePoints)
+            marker.remove();
+        routePoints.clear();
     }
 
-    private Pair<Double, Polyline> drawRoute(LatLng start, LatLng end) {
+    private Pair<Double, Polyline> drawRoute(Marker start, Marker end) {
         double totalDistance = 0;
 
         routePoints.addFirst(start);
         routePoints.addLast(end);
 
         for (int i = 0; i < routePoints.size() - 1; i++) {
-            totalDistance += calculateDistance(routePoints.get(i), routePoints.get(i + 1));
+            totalDistance += calculateDistance(
+                    routePoints.get(i).getPosition(),
+                    routePoints.get(i + 1).getPosition());
         }
 
-        PolylineOptions polylineOptions = new PolylineOptions().addAll(routePoints)
-                .width(4);
+        List<LatLng> list = routePoints.stream().map(marker -> marker.getPosition()).toList();
+
+        PolylineOptions polylineOptions = new PolylineOptions().addAll(list)
+                .width(6);
         Polyline polyline = tencentMap.addPolyline(polylineOptions);
 
-        LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        for (LatLng point : routePoints) {
-            builder.include(point);
+//        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+//        for (LatLng point : list) {
+//            builder.include(point);
+//        }
+//        LatLngBounds bounds = builder.build();
+//        tencentMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100));
+
+        for (int i = 1; i < routePoints.size() - 1; ++i) {
+            routePoints.get(i).remove();
         }
-        LatLngBounds bounds = builder.build();
-        tencentMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100));
 
         return new Pair<>(totalDistance, polyline);
     }
