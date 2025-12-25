@@ -15,10 +15,21 @@ public class Node {
     public String description;
 
     public Node(LatLng position, String name, String description) {
-        this.id = ID_GENERATOR.incrementAndGet();;
+        this.id = ID_GENERATOR.incrementAndGet();
         this.position = position;
         this.name = name;
         this.description = description;
+    }
+
+    public Node(int id, LatLng position, String name, String description) {
+        this.id = id;
+        this.position = position;
+        this.name = name;
+        this.description = description;
+    }
+
+    public static void setGeneratorValue(int value) {
+        ID_GENERATOR.set(value);
     }
 
     public void setName(String name) {

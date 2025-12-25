@@ -1,7 +1,6 @@
 package com.example.campusnavigation;
 
 import com.tencent.tencentmap.mapsdk.maps.model.LatLng;
-import com.tencent.tencentmap.mapsdk.maps.model.Polyline;
 
 import java.util.List;
 

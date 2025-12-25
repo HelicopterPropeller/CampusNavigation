@@ -38,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
     private LatLngBounds bounds;
     private LatLng boundsCenter;
     private final Map<Marker, Node> markerToNode = new LinkedHashMap<>();
+    private final Map<Node, Marker> nodeToMarker = new LinkedHashMap<>();
     private final Map<Polyline, Pair<Edge, Edge>> polylineToEdge = new LinkedHashMap<>();
     private final Map<Marker, List<Polyline>> markerToPolyline = new LinkedHashMap<>();
     private boolean isShow = false;
@@ -49,6 +50,7 @@ public class MainActivity extends AppCompatActivity {
     private List<Marker> routePoints = new ArrayList<>();
     private Marker edgeStart = null;
     private Marker viewStart = null;
+    private List<Polyline> guidePolylines = new ArrayList<>();
 
     private TencentMap.OnMapClickListener nodeMapCL = latLng -> {
         /* 点击设立地点 弹出弹窗以编辑地点信息 */
@@ -72,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
             marker.setClickable(true);
 
             markerToNode.put(marker, node);
+            nodeToMarker.put(node, marker);
             markerToPolyline.put(marker, new ArrayList<>());
             graph.addNode(node);
 
@@ -155,55 +158,71 @@ public class MainActivity extends AppCompatActivity {
 
     private TencentMap.OnMarkerClickListener viewMarkerCL = marker -> {
         /* 点击显示地点信息 提供from-to功能 */
-        if (isShow) marker.hideInfoWindow(); else marker.showInfoWindow();
+        Node node = markerToNode.get(marker);
+        if (node == null) return false;
 
-        button_1.setText("从这来");
-        button_2.setText("到这去");
-
-        button_1.setOnClickListener(v -> {
-            /* from */
-            viewStart = marker;
-
-            button_1.setVisibility(View.GONE);
-            button_2.setVisibility(View.GONE);
+        if (marker.isInfoWindowShown()) {
             marker.hideInfoWindow();
-            isShow = !isShow;
-        });
-
-        button_2.setOnClickListener(v -> {
-            /* to */
-            if (viewStart == null) {
-                Toast.makeText(this, "请选择起点", Toast.LENGTH_SHORT).show();
-                return;
-            } else if (viewStart == marker) {
-                Toast.makeText(this, "终点和起点不应该是同一地点", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            Node from = markerToNode.get(viewStart);
-            Node to = markerToNode.get(marker);
-            double distance = graph.getShortestPath(from.id, to.id);
-            Toast.makeText(this, "最近距离是: " + (int) distance + "米", Toast.LENGTH_SHORT).show();
-
-            button_1.setVisibility(View.GONE);
-            button_2.setVisibility(View.GONE);
-            marker.hideInfoWindow();
-            isShow = !isShow;
-            viewStart = null;
-        });
-
-        if (isShow) {
             button_1.setVisibility(View.GONE);
             button_2.setVisibility(View.GONE);
         } else {
+            marker.showInfoWindow();
+            button_1.setText("从这来");
+            button_2.setText("到这去");
             button_1.setVisibility(View.VISIBLE);
             button_2.setVisibility(View.VISIBLE);
         }
 
-        isShow = !isShow;
+        button_1.setOnClickListener(v -> {
+            viewStart = marker;
+            Toast.makeText(this, "起点已设为: " + node.name, Toast.LENGTH_SHORT).show();
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+            marker.hideInfoWindow();
+        });
+
+        button_2.setOnClickListener(v -> {
+            if (viewStart == null) {
+                Toast.makeText(this, "请先点击一个地点并选择'从这来'", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (viewStart.equals(marker)) {
+                Toast.makeText(this, "终点和起点不能相同", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Node from = markerToNode.get(viewStart);
+            Node to = node;
+
+            if (from == null || to == null) return;
+
+            Pair<Double, List<Edge>> pair = graph.getShortestPathWithEdges(from.id, to.id);
+            double distance = pair.first;
+
+            if (distance < 0) {
+                Toast.makeText(this, "无法到达该地点", Toast.LENGTH_SHORT).show();
+            } else {
+                for (Polyline p : guidePolylines) p.remove();
+                guidePolylines.clear();
+
+                for (Edge edge : pair.second) {
+                    Polyline polyline = tencentMap.addPolyline(
+                            new PolylineOptions().addAll(edge.waypoints).color(0xFF0000FF).width(10)
+                    );
+                    guidePolylines.add(polyline);
+                }
+                Toast.makeText(this, "从 " + from.name + " 到 " + to.name + " 距离: " + (int) distance + "米", Toast.LENGTH_SHORT).show();
+            }
+
+            button_1.setVisibility(View.GONE);
+            button_2.setVisibility(View.GONE);
+            marker.hideInfoWindow();
+            viewStart = null;
+        });
 
         return true;
     };
+
 
     private TencentMap.OnMapClickListener edgeMapCL = latLng -> {
         /* 点击区域选取途经点 */
@@ -437,6 +456,11 @@ public class MainActivity extends AppCompatActivity {
         for (Marker marker : routePoints)
             marker.remove();
         routePoints.clear();
+
+        for (Polyline p : guidePolylines) {
+            p.remove();
+        }
+        guidePolylines.clear();
     }
 
     private Pair<Double, Polyline> drawRoute(Marker start, Marker end) {
@@ -492,25 +516,36 @@ public class MainActivity extends AppCompatActivity {
 
         tencentMap.clear();
         markerToNode.clear();
+        nodeToMarker.clear();
         markerToPolyline.clear();
+        polylineToEdge.clear();
 
-        List<Node> loadedNodes = DataPersistence.loadNodes(this);
-        List<Edge> loadedEdges = DataPersistence.loadEdges(this);
+        graph.nodeList = DataPersistence.loadNodes(this);
+        graph.edgeList = DataPersistence.loadEdges(this);
 
-        for (Node node : loadedNodes) {
+        int maxId = 0;
+        for (Node node : graph.nodeList) {
+            if (node.id > maxId) {
+                maxId = node.id;
+            }
+        }
+        Node.setGeneratorValue(maxId);
+
+        graph.rebuildGraph();
+
+        for (Node node : graph.nodeList) {
             MarkerOptions options = new MarkerOptions(node.position)
                     .title(node.name)
                     .snippet(node.description);
 
             Marker marker = tencentMap.addMarker(options);
             markerToNode.put(marker, node);
+            nodeToMarker.put(node, marker);
             markerToPolyline.put(marker, new ArrayList<>());
         }
 
-        for (Edge edge : loadedEdges) {
-            if (edge.waypoints == null || edge.waypoints.size() < 2) {
-                continue;
-            }
+        for (Edge edge : graph.edgeList) {
+            if (edge.waypoints == null || edge.waypoints.size() < 2) continue;
 
             Polyline polyline = tencentMap.addPolyline(
                     new PolylineOptions()
@@ -518,15 +553,26 @@ public class MainActivity extends AppCompatActivity {
                             .width(6)
             );
 
-            for (Marker marker : markerToNode.keySet()) {
-                Node node = markerToNode.get(marker);
-                if (node.id == edge.fromId) {
-                    markerToPolyline.get(marker).add(polyline);
-                    break;
-                }
+            Node fromNode = graph.nodes.get(edge.fromId);
+            Node toNode = graph.nodes.get(edge.toId);
+
+            Marker fromMarker = nodeToMarker.get(fromNode);
+            Marker toMarker = nodeToMarker.get(toNode);
+
+            if (fromMarker != null) markerToPolyline.get(fromMarker).add(polyline);
+            if (toMarker != null) markerToPolyline.get(toMarker).add(polyline);
+
+            if (!polylineToEdge.containsKey(polyline) && fromNode != null && toNode != null) {
+                Edge reverseEdge = graph.adj.get(edge.toId).stream()
+                        .filter(e -> e.toId == edge.fromId && e.waypoints.equals(edge.waypoints))
+                        .findFirst()
+                        .orElse(null);
+
+                polylineToEdge.put(polyline, new Pair<>(edge, reverseEdge));
             }
         }
     }
+
 
     @Override
     protected void onStop() {
