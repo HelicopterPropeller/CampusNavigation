@@ -15,8 +15,6 @@ import com.tencent.tencentmap.mapsdk.maps.CameraUpdateFactory;
 import com.tencent.tencentmap.mapsdk.maps.MapView;
 import com.tencent.tencentmap.mapsdk.maps.TencentMap;
 import com.tencent.tencentmap.mapsdk.maps.TencentMapInitializer;
-import com.tencent.tencentmap.mapsdk.maps.model.BitmapDescriptor;
-import com.tencent.tencentmap.mapsdk.maps.model.BitmapDescriptorFactory;
 import com.tencent.tencentmap.mapsdk.maps.model.CameraPosition;
 import com.tencent.tencentmap.mapsdk.maps.model.LatLng;
 import com.tencent.tencentmap.mapsdk.maps.model.LatLngBounds;
@@ -39,8 +37,9 @@ public class MainActivity extends AppCompatActivity {
     private int padding;
     private LatLngBounds bounds;
     private LatLng boundsCenter;
-    private Map<Marker, Node> markerToNode = new LinkedHashMap<>();
-    private Map<Marker, List<Polyline>> markerToPolyline = new LinkedHashMap<>();
+    private final Map<Marker, Node> markerToNode = new LinkedHashMap<>();
+    private final Map<Polyline, Pair<Edge, Edge>> polylineToEdge = new LinkedHashMap<>();
+    private final Map<Marker, List<Polyline>> markerToPolyline = new LinkedHashMap<>();
     private boolean isShow = false;
     private MaterialButtonToggleGroup toggleGroup;
     private View bottomSheet;
@@ -56,8 +55,8 @@ public class MainActivity extends AppCompatActivity {
         EditDialogFragment dialog = new EditDialogFragment();
 
         dialog.setOnConfirmListener((name, description) -> {
-            if (name.isEmpty() || description.isEmpty()) {
-                Toast.makeText(this, "地点名称和描述不应为空", Toast.LENGTH_SHORT).show();
+            if (name.isEmpty()) {
+                Toast.makeText(this, "地点名称不应为空", Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -75,6 +74,8 @@ public class MainActivity extends AppCompatActivity {
             markerToNode.put(marker, node);
             markerToPolyline.put(marker, new ArrayList<>());
             graph.addNode(node);
+
+            graph.saveData(this);
         });
 
         dialog.show(getSupportFragmentManager(), "EditDialog");
@@ -105,6 +106,8 @@ public class MainActivity extends AppCompatActivity {
                 marker.getOptions().snippet(description);
 
                 marker.showInfoWindow();
+
+                graph.saveData(this);
             });
 
             dialog.show(getSupportFragmentManager(), "EditDialog");
@@ -128,6 +131,8 @@ public class MainActivity extends AppCompatActivity {
             button_1.setVisibility(View.GONE);
             button_2.setVisibility(View.GONE);
 
+            graph.saveData(this);
+
             Toast.makeText(this, "地点标记已删除", Toast.LENGTH_SHORT).show();
         });
 
@@ -150,7 +155,6 @@ public class MainActivity extends AppCompatActivity {
 
     private TencentMap.OnMarkerClickListener viewMarkerCL = marker -> {
         /* 点击显示地点信息 提供from-to功能 */
-        Node node = markerToNode.get(marker);
         if (isShow) marker.hideInfoWindow(); else marker.showInfoWindow();
 
         button_1.setText("从这来");
@@ -204,8 +208,8 @@ public class MainActivity extends AppCompatActivity {
     private TencentMap.OnMapClickListener edgeMapCL = latLng -> {
         /* 点击区域选取途经点 */
         MarkerOptions mp = new MarkerOptions(latLng);
-        BitmapDescriptor custom = BitmapDescriptorFactory.fromResource(R.drawable.waypoint);
-        mp.icon(custom);
+//        BitmapDescriptor custom = BitmapDescriptorFactory.fromResource(R.drawable.waypoint);
+//        mp.icon(custom);
         Marker marker = tencentMap.addMarker(mp);
         routePoints.add(marker);
     };
@@ -227,14 +231,24 @@ public class MainActivity extends AppCompatActivity {
             Node from = markerToNode.get(edgeStart);
             Node to = markerToNode.get(marker);
 
-            Edge edge1 = new Edge(from.id, to.id, distance);
-            Edge edge2 = new Edge(to.id, from.id, distance);
+            List<LatLng> waypoints = routePoints.stream().map(Marker::getPosition).toList();
+
+            Edge edge1 = new Edge(from.id, to.id, distance, waypoints);
+            Edge edge2 = new Edge(to.id, from.id, distance, waypoints);
+
+            for (int i = 1; i < routePoints.size() - 1; ++i) {
+                routePoints.get(i).remove();
+            }
 
             graph.addEdge(edge1);
             graph.addEdge(edge2);
 
+            polylineToEdge.put(polyline, new Pair<>(edge1, edge2));
+
             routePoints.clear();
             edgeStart = null;
+
+            graph.saveData(this);
         }
 
         return true;
@@ -348,6 +362,35 @@ public class MainActivity extends AppCompatActivity {
 //                        Toast.makeText(this, "当前处于编辑道路模式", Toast.LENGTH_SHORT).show();
                         tencentMap.setOnMapClickListener(edgeMapCL);
                         tencentMap.setOnMarkerClickListener(edgeMarkerCL);
+
+                        tencentMap.setOnPolylineClickListener((polyline, latLng) -> {
+                            button_2.setText("删除");
+
+                            button_2.setOnClickListener(v -> {
+                                /* 删除道路逻辑 */
+                                Pair<Edge, Edge> pair = polylineToEdge.get(polyline);
+                                polyline.remove();
+
+                                graph.removeEdge(pair.first);
+                                graph.removeEdge(pair.second);
+
+                                isShow = !isShow;
+                                button_1.setVisibility(View.GONE);
+                                button_2.setVisibility(View.GONE);
+
+                                graph.saveData(this);
+
+                                Toast.makeText(this, "道路标记已删除", Toast.LENGTH_SHORT).show();
+                            });
+
+                            if (isShow) {
+                                button_2.setVisibility(View.GONE);
+                            } else {
+                                button_2.setVisibility(View.VISIBLE);
+                            }
+
+                            isShow = !isShow;
+                        });
                     }
                 }
         );
@@ -408,7 +451,7 @@ public class MainActivity extends AppCompatActivity {
                     routePoints.get(i + 1).getPosition());
         }
 
-        List<LatLng> list = routePoints.stream().map(marker -> marker.getPosition()).toList();
+        List<LatLng> list = routePoints.stream().map(Marker::getPosition).toList();
 
         PolylineOptions polylineOptions = new PolylineOptions().addAll(list)
                 .width(6);
@@ -421,10 +464,6 @@ public class MainActivity extends AppCompatActivity {
 //        LatLngBounds bounds = builder.build();
 //        tencentMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100));
 
-        for (int i = 1; i < routePoints.size() - 1; ++i) {
-            routePoints.get(i).remove();
-        }
-
         return new Pair<>(totalDistance, polyline);
     }
 
@@ -435,12 +474,12 @@ public class MainActivity extends AppCompatActivity {
         double lat2 = Math.toRadians(endPoint.latitude);
         double lon2 = Math.toRadians(endPoint.longitude);
 
-        double dlat = lat2 - lat1;
-        double dlon = lon2 - lon1;
+        double d_lat = lat2 - lat1;
+        double d_lon = lon2 - lon1;
 
-        double a = Math.sin(dlat / 2) * Math.sin(dlat / 2) +
+        double a = Math.sin(d_lat / 2) * Math.sin(d_lat / 2) +
                 Math.cos(lat1) * Math.cos(lat2) *
-                        Math.sin(dlon / 2) * Math.sin(dlon / 2);
+                        Math.sin(d_lon / 2) * Math.sin(d_lon / 2);
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
         return R * c;
@@ -450,6 +489,43 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         map.onStart();
+
+        tencentMap.clear();
+        markerToNode.clear();
+        markerToPolyline.clear();
+
+        List<Node> loadedNodes = DataPersistence.loadNodes(this);
+        List<Edge> loadedEdges = DataPersistence.loadEdges(this);
+
+        for (Node node : loadedNodes) {
+            MarkerOptions options = new MarkerOptions(node.position)
+                    .title(node.name)
+                    .snippet(node.description);
+
+            Marker marker = tencentMap.addMarker(options);
+            markerToNode.put(marker, node);
+            markerToPolyline.put(marker, new ArrayList<>());
+        }
+
+        for (Edge edge : loadedEdges) {
+            if (edge.waypoints == null || edge.waypoints.size() < 2) {
+                continue;
+            }
+
+            Polyline polyline = tencentMap.addPolyline(
+                    new PolylineOptions()
+                            .addAll(edge.waypoints)
+                            .width(6)
+            );
+
+            for (Marker marker : markerToNode.keySet()) {
+                Node node = markerToNode.get(marker);
+                if (node.id == edge.fromId) {
+                    markerToPolyline.get(marker).add(polyline);
+                    break;
+                }
+            }
+        }
     }
 
     @Override

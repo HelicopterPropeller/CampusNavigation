@@ -1,5 +1,7 @@
 package com.example.campusnavigation;
 
+import android.content.Context;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -10,10 +12,13 @@ import java.util.PriorityQueue;
 public class CampusGraph {
     public Map<Integer, Node> nodes = new HashMap<>();
     public Map<Integer, List<Edge>> adj = new HashMap<>();
+    public List<Node> nodeList = new ArrayList<>();
+    public List<Edge> edgeList = new ArrayList<>();
 
     public void addNode(Node node) {
         nodes.put(node.id, node);
         adj.putIfAbsent(node.id, new ArrayList<>());
+        nodeList.add(node);
     }
 
     public void removeNode(int id) {
@@ -22,6 +27,7 @@ public class CampusGraph {
         for (List<Edge> edges : adj.values()) {
             edges.removeIf(edge -> edge.toId == id);
         }
+        nodeList.remove(nodes.get(id));
     }
 
     public void addEdge(Edge edge) {
@@ -29,18 +35,21 @@ public class CampusGraph {
             adj.get(edge.fromId).add(edge);
         }
         if (adj.containsKey(edge.toId)) {
-            Edge reverseEdge = new Edge(edge.toId, edge.fromId, edge.distance);
+            Edge reverseEdge = new Edge(edge.toId, edge.fromId, edge.distance, edge.waypoints);
             adj.get(edge.toId).add(reverseEdge);
         }
+        edgeList.add(edge);
     }
 
-    public void removeEdge(int fromId, int toId) {
-        if (adj.containsKey(fromId)) {
-            adj.get(fromId).removeIf(edge -> edge.toId == toId);
+    public void removeEdge(Edge edge) {
+        if (adj.containsKey(edge.fromId)) {
+            adj.get(edge.fromId).removeIf(e -> e.toId == edge.toId);
         }
-        if (adj.containsKey(toId)) {
-            adj.get(toId).removeIf(edge -> edge.toId == fromId);
+        if (adj.containsKey(edge.toId)) {
+            adj.get(edge.toId).removeIf(e -> e.toId == edge.fromId);
         }
+        /* edgeList删除道路逻辑 */
+        edgeList.remove(edge);
     }
 
     public double getShortestPath(int fromId, int toId) {
@@ -74,6 +83,10 @@ public class CampusGraph {
         }
 
         return distances.get(toId) == Double.MAX_VALUE ? -1 : distances.get(toId);
+    }
+
+    public void saveData(Context context) {
+        DataPersistence.saveData(context, nodeList, edgeList);
     }
 
     private static class NodeDist {
