@@ -50,12 +50,12 @@
     <LinearLayout
         android:id="@+id/bottom_sheet"
         android:layout_width="match_parent"
-        android:layout_height="80dp"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/background_rounded"
         android:backgroundTint="#FEFEFE"
-        app:layout_constraintBottom_toBottomOf="@id/content"
         app:behavior_peekHeight="80dp"
+        app:behavior_hideable="false"
         app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
 
         <View
@@ -107,6 +107,17 @@
                 app:rippleColor="@color/mode_button_color"/>
 
         </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <Button
+            android:id="@+id/export_button"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:text="导出校园地图数据 (PDF)"
+            android:textColor="#2196F3"/>
 
     </LinearLayout>
 
